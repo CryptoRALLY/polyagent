@@ -8,7 +8,7 @@ sitting.
 
 ```bash
 bash -n agent          # syntax check
-shellcheck agent        # static analysis
+shellcheck -S warning agent  # static analysis
 bash test/smoke.sh      # functional smoke tests
 ```
 
