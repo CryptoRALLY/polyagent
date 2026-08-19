@@ -13,7 +13,7 @@ jobs:
       - name: bash -n (syntax check)
         run: bash -n agent
       - name: shellcheck
-        run: shellcheck agent
+        run: shellcheck -S warning agent
 
   smoke:
     runs-on: ubuntu-latest

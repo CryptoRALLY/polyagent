@@ -14,12 +14,12 @@ else
 fi
 
 if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
-  C_RESET=$'\033[0m'; C_BOLD=$'\033[1m'; C_DIM=$'\033[2m'
+  C_RESET=$'\033[0m'; C_DIM=$'\033[2m'
   C_CYAN=$'\033[36m'; C_CYAN_B=$'\033[1;36m'; C_MAGENTA_B=$'\033[1;35m'
   C_GREEN=$'\033[32m'; C_RED=$'\033[31m'; C_YELLOW=$'\033[33m'
   G_ON='●'; G_OFF='○'; G_DIAMOND='◈'
 else
-  C_RESET=''; C_BOLD=''; C_DIM=''; C_CYAN=''; C_CYAN_B=''; C_MAGENTA_B=''
+  C_RESET=''; C_DIM=''; C_CYAN=''; C_CYAN_B=''; C_MAGENTA_B=''
   C_GREEN=''; C_RED=''; C_YELLOW=''
   G_ON='*'; G_OFF='o'; G_DIAMOND='*'
 fi
@@ -159,6 +159,7 @@ load_usage() {
   local file
   file="$(usage_file "$profile")"
   if [[ -f "$file" ]]; then
+    # shellcheck source=/dev/null
     source "$file"
     if [[ -n "$cost_usd" ]]; then
       printf '%s · $%s · checked %s' "${model:-unknown model}" "$cost_usd" "$checked_at"
@@ -290,7 +291,7 @@ run_profile() {
 
 start_or_switch() {
   ensure_init
-  local is_switch="$1"; shift
+  shift
   local target="${1:-}"; shift || true
   profile_valid "$target" || die "choose one of: ${profiles[*]}"
   load_active
