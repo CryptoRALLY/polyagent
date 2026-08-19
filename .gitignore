@@ -1,0 +1,7 @@
+# Credentials and runtime state live outside this repo, under
+# $AGENT_SWITCHBOARD_HOME (default: ~/.local/share/agent-switchboard).
+# These patterns are a safety net in case that ever points inside the repo.
+.agent-switchboard/
+profiles/
+handoffs/
+*.env

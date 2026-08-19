@@ -1,0 +1,415 @@
+#!/usr/bin/env bash
+# Terminal switchboard for isolated Codex and Claude subscription profiles.
+set -euo pipefail
+
+APP_HOME="${AGENT_SWITCHBOARD_HOME:-$HOME/.local/share/agent-switchboard}"
+STATE_HOME="$APP_HOME/state"
+PROFILE_HOME="$APP_HOME/profiles"
+HANDOFF_HOME="${AGENT_SWITCHBOARD_HANDOFF_HOME:-$APP_HOME/handoffs}"
+
+profiles=(codex-personal codex-work claude-personal claude-work)
+
+if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
+  C_RESET=$'\033[0m'; C_BOLD=$'\033[1m'; C_DIM=$'\033[2m'
+  C_CYAN=$'\033[36m'; C_CYAN_B=$'\033[1;36m'; C_MAGENTA_B=$'\033[1;35m'
+  C_GREEN=$'\033[32m'; C_RED=$'\033[31m'; C_YELLOW=$'\033[33m'
+  G_ON='●'; G_OFF='○'; G_DIAMOND='◈'
+else
+  C_RESET=''; C_BOLD=''; C_DIM=''; C_CYAN=''; C_CYAN_B=''; C_MAGENTA_B=''
+  C_GREEN=''; C_RED=''; C_YELLOW=''
+  G_ON='*'; G_OFF='o'; G_DIAMOND='*'
+fi
+
+banner() {
+  printf '%s╔═══════════════════════════════════╗%s\n' "$C_CYAN" "$C_RESET"
+  printf '%s║%s  %s%s AGENT SWITCHBOARD %s%s              %s║%s\n' \
+    "$C_CYAN" "$C_RESET" "$C_MAGENTA_B" "$G_DIAMOND" "$G_DIAMOND" "$C_RESET" "$C_CYAN" "$C_RESET"
+  printf '%s╚═══════════════════════════════════╝%s\n' "$C_CYAN" "$C_RESET"
+}
+
+rule() { printf '%s%s%s\n' "$C_DIM" "─── ${1:-} ───" "$C_RESET"; }
+
+usage() {
+  cat <<'EOF'
+Usage: agent <command> [options]
+
+Commands:
+  init                         Create private state and profile directories.
+  profiles                     Show the four available profiles and login state.
+  login <profile>              Sign in once for that isolated profile/workspace.
+  start <profile> [--dir DIR] [--task NAME] [--prompt TEXT]
+                               Start or reattach to that profile in tmux.
+  switch <profile> [--dir DIR] [--task NAME] [--note TEXT]
+                               Record a handoff, then start or reattach to the target.
+  handoff [--task NAME] [--note TEXT]
+                               Write Git and AI-context state to a handoff record.
+  status                       Show the current task and recent handoffs.
+  usage                        Refresh and show last-known usage/cost/model for
+                               all signed-in profiles (makes one small real,
+                               billed call per profile).
+
+Profiles: codex-personal, codex-work, claude-personal, claude-work
+
+Run `agent init`, then sign in once to each profile with `agent login <profile>`.
+EOF
+}
+
+die() { printf 'agent: %s\n' "$*" >&2; exit 2; }
+
+profile_valid() {
+  local candidate="$1" profile
+  for profile in "${profiles[@]}"; do [[ "$candidate" == "$profile" ]] && return 0; done
+  return 1
+}
+
+ensure_init() {
+  [[ -d "$APP_HOME" ]] || die "not initialized; run: agent init"
+}
+
+profile_path() { printf '%s/%s' "$PROFILE_HOME" "$1"; }
+
+provider_for() {
+  case "$1" in
+    codex-*) printf 'codex' ;;
+    claude-*) printf 'claude' ;;
+    *) die "unknown profile: $1" ;;
+  esac
+}
+
+session_name() {
+  local task="${1:-default}" profile="$2"
+  task="${task//[^[:alnum:]_-]/-}"
+  printf 'agent-%s-%s' "$profile" "$task"
+}
+
+init() {
+  install -d -m 700 "$APP_HOME" "$STATE_HOME" "$PROFILE_HOME"
+  local profile
+  for profile in "${profiles[@]}"; do install -d -m 700 "$(profile_path "$profile")"; done
+  install -d -m 700 "$HANDOFF_HOME"
+  if [[ ! -f "$STATE_HOME/active.env" ]]; then
+    printf 'task=\nprofile=\ndir=%q\n' "$PWD" >"$STATE_HOME/active.env"
+    chmod 600 "$STATE_HOME/active.env"
+  fi
+  printf 'Initialized %s\n' "$APP_HOME"
+}
+
+load_active() {
+  task=''; profile=''; dir="$PWD"
+  [[ -f "$STATE_HOME/active.env" ]] && source "$STATE_HOME/active.env"
+}
+
+save_active() {
+  local tmp
+  tmp="$(mktemp "$STATE_HOME/active.env.XXXXXX")"
+  printf 'task=%q\nprofile=%q\ndir=%q\n' "$task" "$profile" "$dir" >"$tmp"
+  chmod 600 "$tmp"
+  mv "$tmp" "$STATE_HOME/active.env"
+}
+
+login() {
+  ensure_init
+  local profile="${1:-}"
+  profile_valid "$profile" || die "choose one of: ${profiles[*]}"
+  local profile_dir provider
+  profile_dir="$(profile_path "$profile")"
+  provider="$(provider_for "$profile")"
+  case "$provider" in
+    codex) CODEX_HOME="$profile_dir" codex login --device-auth ;;
+    claude) CLAUDE_CONFIG_DIR="$profile_dir" claude auth login --claudeai ;;
+  esac
+}
+
+is_logged_in() {
+  local profile="$1" provider profile_dir result
+  provider="$(provider_for "$profile")"
+  profile_dir="$(profile_path "$profile")"
+  if [[ "$provider" == codex ]]; then
+    result="$(CODEX_HOME="$profile_dir" codex login status 2>&1 || true)"
+    printf '%s' "$result" | grep -qiE '^logged in'
+  else
+    result="$(CLAUDE_CONFIG_DIR="$profile_dir" claude auth status 2>&1 || true)"
+    printf '%s' "$result" | grep -q '"loggedIn"[[:space:]]*:[[:space:]]*true'
+  fi
+}
+
+profile_status() {
+  ensure_init
+  local profile
+  for profile in "${profiles[@]}"; do
+    if is_logged_in "$profile"; then
+      printf '%-16s ready\n' "$profile"
+    else
+      printf '%-16s needs login\n' "$profile"
+    fi
+  done
+}
+
+usage_file() { printf '%s/last_usage.env' "$(profile_path "$1")"; }
+
+load_usage() {
+  local profile="$1" checked_at='' model='' cost_usd='' input_tokens='' output_tokens=''
+  local file
+  file="$(usage_file "$profile")"
+  if [[ -f "$file" ]]; then
+    source "$file"
+    if [[ -n "$cost_usd" ]]; then
+      printf '%s · $%s · checked %s' "${model:-unknown model}" "$cost_usd" "$checked_at"
+    elif [[ -n "$input_tokens" ]]; then
+      printf 'tokens %s in / %s out (cost not exposed by provider) · checked %s' "$input_tokens" "$output_tokens" "$checked_at"
+    else
+      printf 'usage: never checked'
+    fi
+  else
+    printf 'usage: never checked'
+  fi
+}
+
+save_usage() {
+  local profile="$1" model="$2" cost_usd="$3" input_tokens="$4" output_tokens="$5"
+  local file tmp
+  file="$(usage_file "$profile")"
+  tmp="$(mktemp "$(dirname "$file")/last_usage.env.XXXXXX")"
+  printf 'checked_at=%q\nmodel=%q\ncost_usd=%q\ninput_tokens=%q\noutput_tokens=%q\n' \
+    "$(date --iso-8601=seconds)" "$model" "$cost_usd" "$input_tokens" "$output_tokens" >"$tmp"
+  chmod 600 "$tmp"
+  mv "$tmp" "$file"
+}
+
+probe_usage_codex() {
+  local profile="$1" profile_dir raw usage_json
+  profile_dir="$(profile_path "$profile")"
+  raw="$(CODEX_HOME="$profile_dir" codex exec --json -s read-only --skip-git-repo-check "Reply with exactly: ok" 2>&1 || true)"
+  usage_json="$(printf '%s\n' "$raw" | grep '"type":"turn.completed"' | tail -1)"
+  if [[ -z "$usage_json" ]]; then
+    printf 'probe failed: %s\n' "$(printf '%s' "$raw" | tail -1)" >&2
+    return 1
+  fi
+  local input_tokens output_tokens
+  input_tokens="$(printf '%s' "$usage_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["usage"]["input_tokens"])' 2>/dev/null || echo '')"
+  output_tokens="$(printf '%s' "$usage_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["usage"]["output_tokens"])' 2>/dev/null || echo '')"
+  save_usage "$profile" '' '' "$input_tokens" "$output_tokens"
+}
+
+probe_usage_claude() {
+  local profile="$1" profile_dir raw
+  profile_dir="$(profile_path "$profile")"
+  raw="$(CLAUDE_CONFIG_DIR="$profile_dir" claude -p "Reply with exactly: ok" --output-format json 2>&1 || true)"
+  local cost_usd model input_tokens output_tokens
+  cost_usd="$(printf '%s' "$raw" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(round(d.get("total_cost_usd",0),4))' 2>/dev/null || echo '')"
+  model="$(printf '%s' "$raw" | python3 -c 'import json,sys; d=json.load(sys.stdin); mu=d.get("modelUsage",{}); print(next(iter(mu),""))' 2>/dev/null || echo '')"
+  input_tokens="$(printf '%s' "$raw" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("usage",{}).get("input_tokens",""))' 2>/dev/null || echo '')"
+  output_tokens="$(printf '%s' "$raw" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("usage",{}).get("output_tokens",""))' 2>/dev/null || echo '')"
+  if [[ -z "$cost_usd" ]]; then
+    printf 'probe failed: %s\n' "$(printf '%s' "$raw" | tail -1)" >&2
+    return 1
+  fi
+  save_usage "$profile" "$model" "$cost_usd" "$input_tokens" "$output_tokens"
+}
+
+refresh_usage_all() {
+  ensure_init
+  printf 'Refreshing usage for all 4 profiles.\n'
+  printf 'This makes one small real, billed call per signed-in profile (observed range: ~$0.0006-$0.09 for Claude; token-only for Codex, no direct cost exposed).\n\n'
+  local profile provider
+  for profile in "${profiles[@]}"; do
+    if ! is_logged_in "$profile"; then
+      printf '%-16s skipped (not signed in)\n' "$profile"
+      continue
+    fi
+    provider="$(provider_for "$profile")"
+    printf '%-16s checking...\n' "$profile"
+    if [[ "$provider" == codex ]]; then
+      probe_usage_codex "$profile" && printf '%-16s done: %s\n' "$profile" "$(load_usage "$profile")"
+    else
+      probe_usage_claude "$profile" && printf '%-16s done: %s\n' "$profile" "$(load_usage "$profile")"
+    fi
+  done
+}
+
+handoff() {
+  ensure_init
+  load_active
+  local note='' explicit_task=''
+  while (($#)); do
+    case "$1" in
+      --task) explicit_task="${2:-}"; shift 2 ;;
+      --note) note="${2:-}"; shift 2 ;;
+      *) die "unknown handoff option: $1" ;;
+    esac
+  done
+  [[ -n "$explicit_task" ]] && task="$explicit_task"
+  [[ -n "$task" ]] || task='unclassified'
+  local stamp safe_task file git_root git_head git_status
+  stamp="$(date +%Y%m%d-%H%M%S-%Z)"
+  safe_task="${task//[^[:alnum:]_-]/-}"
+  file="$HANDOFF_HOME/$stamp-$safe_task.md"
+  git_root='(not a Git worktree)'; git_head=''; git_status=''
+  if git_root="$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null)"; then
+    git_head="$(git -C "$dir" rev-parse --short HEAD 2>/dev/null || true)"
+    git_status="$(git -C "$dir" status --short 2>/dev/null || true)"
+  fi
+  {
+    printf '# Agent handoff: %s\n\n' "$task"
+    printf -- '- Created: %s\n' "$(date --iso-8601=seconds)"
+    printf -- '- From profile: %s\n' "${profile:-unknown}"
+    printf -- '- Working directory: `%s`\n' "$dir"
+    printf -- '- Git root: `%s`\n' "$git_root"
+    [[ -n "$git_head" ]] && printf -- '- Git HEAD: `%s`\n' "$git_head"
+    printf '\n## Working-tree status\n\n```text\n%s\n```\n' "${git_status:-clean or not a Git worktree}"
+    printf '\n## Operator note\n\n%s\n' "${note:-No additional note supplied. The receiving agent must inspect the repository and shared context before acting.}"
+    printf '\n## Required resume context\n\n%s\n' "${AGENT_SWITCHBOARD_RESUME_NOTE:-Read this project'\''s shared instructions file (e.g. CLAUDE.md / AGENTS.md) and any team handoff notes before acting.}"
+  } >"$file"
+  chmod 600 "$file"
+  printf '%s\n' "$file"
+}
+
+run_profile() {
+  local target="$1" target_dir="$2" task_name="$3" handoff_file="$4" prompt="$5"
+  local provider profile_dir resume
+  provider="$(provider_for "$target")"
+  profile_dir="$(profile_path "$target")"
+  resume="You are continuing task '$task_name'. Read the handoff at $handoff_file and the shared AI context before acting. $prompt"
+  cd "$target_dir"
+  case "$provider" in
+    codex)
+      exec env CODEX_HOME="$profile_dir" codex --ask-for-approval never --sandbox danger-full-access --no-alt-screen "$resume"
+      ;;
+    claude)
+      exec env CLAUDE_CONFIG_DIR="$profile_dir" claude --permission-mode bypassPermissions "$resume"
+      ;;
+  esac
+}
+
+start_or_switch() {
+  ensure_init
+  local is_switch="$1"; shift
+  local target="${1:-}"; shift || true
+  profile_valid "$target" || die "choose one of: ${profiles[*]}"
+  load_active
+  local target_dir="$dir" task_name="$task" note='' prompt='' handoff_file=''
+  while (($#)); do
+    case "$1" in
+      --dir) target_dir="${2:-}"; shift 2 ;;
+      --task) task_name="${2:-}"; shift 2 ;;
+      --note) note="${2:-}"; shift 2 ;;
+      --prompt) prompt="${2:-}"; shift 2 ;;
+      *) die "unknown option: $1" ;;
+    esac
+  done
+  [[ -d "$target_dir" ]] || die "directory does not exist: $target_dir"
+  [[ -n "$task_name" ]] || task_name='unclassified'
+  dir="$target_dir"
+  handoff_file="$(handoff --task "$task_name" --note "$note")"
+  task="$task_name"; profile="$target"; save_active
+  local session
+  session="$(session_name "$task_name" "$target")"
+  tmux new-session -A -s "$session" "$0" _run "$target" "$target_dir" "$task_name" "$handoff_file" "$prompt"
+}
+
+status() {
+  ensure_init
+  load_active
+  printf 'Active task: %s\nActive profile: %s\nDirectory: %s\n\n' "${task:-none}" "${profile:-none}" "$dir"
+  printf 'Profiles:\n'; profile_status
+  printf '\nRecent handoffs:\n'
+  ls -1t "$HANDOFF_HOME" 2>/dev/null | head -5 || true
+}
+
+choose_profile() {
+  local prompt="$1" choice i=1 item glyph glyph_color status_word usage_line
+  printf '\n'
+  rule "$prompt"
+  printf '%sAll profiles auto-approve: Codex --ask-for-approval never --sandbox danger-full-access · Claude --permission-mode bypassPermissions%s\n\n' "$C_DIM" "$C_RESET"
+  for item in "${profiles[@]}"; do
+    if is_logged_in "$item"; then
+      glyph="$G_ON"; glyph_color="$C_GREEN"; status_word='signed in'
+    else
+      glyph="$G_OFF"; glyph_color="$C_RED"; status_word='needs login'
+    fi
+    usage_line="$(load_usage "$item")"
+    printf '  %s%d%s) %-16s %s%s%s %s%-12s%s %s%s%s\n' \
+      "$C_CYAN_B" "$i" "$C_RESET" "$item" "$glyph_color" "$glyph" "$C_RESET" "$glyph_color" "$status_word" "$C_RESET" "$C_YELLOW" "$usage_line" "$C_RESET"
+    ((i++))
+  done
+  printf '  %sq%s) Back\n' "$C_CYAN_B" "$C_RESET"
+  read -r -p 'Choose: ' choice
+  [[ "$choice" == q || "$choice" == Q ]] && return 1
+  [[ "$choice" =~ ^[1-4]$ ]] || { printf 'Please choose 1-4 or q.\n' >&2; return 1; }
+  REPLY="${profiles[$((choice - 1))]}"
+}
+
+interactive() {
+  [[ -f "$STATE_HOME/active.env" ]] || init
+  local action new_task new_dir note target
+  while true; do
+    load_active
+    clear 2>/dev/null || true
+    banner
+    printf '%sTask:%s      %s\n%sProfile:%s   %s\n%sDirectory:%s %s\n\n' \
+      "$C_DIM" "$C_RESET" "${task:-not set}" "$C_DIM" "$C_RESET" "${profile:-not set}" "$C_DIM" "$C_RESET" "$dir"
+    printf '  %s1%s) Start or continue work\n' "$C_CYAN_B" "$C_RESET"
+    printf '  %s2%s) Handoff and switch account/workspace\n' "$C_CYAN_B" "$C_RESET"
+    printf '  %s3%s) Set task and working directory\n' "$C_CYAN_B" "$C_RESET"
+    printf '  %s4%s) Sign in or refresh a profile\n' "$C_CYAN_B" "$C_RESET"
+    printf '  %s5%s) Check profile status\n' "$C_CYAN_B" "$C_RESET"
+    printf '  %s6%s) Refresh usage for all profiles %s(makes small real billed calls)%s\n' "$C_CYAN_B" "$C_RESET" "$C_DIM" "$C_RESET"
+    printf '  %sq%s) Quit\n\n' "$C_CYAN_B" "$C_RESET"
+    read -r -p 'Choose: ' action
+    case "$action" in
+      1)
+        choose_profile 'Choose where to work:' || continue
+        target="$REPLY"
+        [[ -n "$task" ]] || { read -r -p 'Task name: ' task; task="${task:-general}"; }
+        start_or_switch start "$target" --task "$task" --dir "$dir"
+        ;;
+      2)
+        choose_profile 'Choose the destination account/workspace:' || continue
+        target="$REPLY"
+        [[ -n "$task" ]] || { read -r -p 'Task name: ' task; task="${task:-general}"; }
+        read -r -p 'Optional handoff note: ' note
+        start_or_switch switch "$target" --task "$task" --dir "$dir" --note "$note"
+        ;;
+      3)
+        read -r -p "Task name [${task:-general}]: " new_task
+        read -r -e -p "Working directory [$dir]: " new_dir
+        task="${new_task:-${task:-general}}"; dir="${new_dir:-$dir}"
+        [[ -d "$dir" ]] || { printf 'Directory does not exist: %s\n' "$dir"; read -r -p 'Press Enter to continue.'; continue; }
+        save_active
+        ;;
+      4)
+        choose_profile 'Choose a profile to sign in or refresh:' || continue
+        login "$REPLY"
+        ;;
+      5)
+        status
+        read -r -p 'Press Enter to continue.'
+        ;;
+      6)
+        refresh_usage_all
+        read -r -p 'Press Enter to continue.'
+        ;;
+      q|Q) return 0 ;;
+      *) printf 'Please choose one of the displayed options.\n'; sleep 1 ;;
+    esac
+  done
+}
+main() {
+  local command="${1:-}"; shift || true
+  case "$command" in
+    init) init "$@" ;;
+    profiles) profile_status "$@" ;;
+    login) login "$@" ;;
+    handoff) handoff "$@" ;;
+    start) start_or_switch start "$@" ;;
+    switch) start_or_switch switch "$@" ;;
+    status) status "$@" ;;
+    usage) refresh_usage_all "$@" ;;
+    _run) run_profile "$@" ;;
+    -h|--help|help) usage ;;
+    '') interactive ;;
+    *) die "unknown command: $command (run: agent help)" ;;
+  esac
+}
+
+main "$@"
