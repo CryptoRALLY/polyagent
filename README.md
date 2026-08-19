@@ -39,7 +39,7 @@ None of this is hard individually. It's just enough friction that people either 
 ## Install
 
 ```bash
-git clone https://github.com/CryptoRALLY/polyagent.git
+git clone https://github.com/RallyGLSX/polyagent.git
 ln -s "$(pwd)/polyagent/agent" ~/.local/bin/agent   # anywhere on your PATH works
 agent init
 ```
