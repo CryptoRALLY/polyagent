@@ -1,6 +1,16 @@
 # polyagent
 
-A terminal launcher for people running **multiple AI coding-agent CLIs** (Codex, Claude Code) across **multiple accounts** (personal + work) at the same time, without them stepping on each other.
+**Run Codex and Claude Code side by side, across as many accounts as you have, and hand work between them without losing context.**
+
+`polyagent` is a single-file terminal launcher for people juggling multiple AI coding-agent CLIs and multiple subscriptions (personal + work). It gives every agent×account combo its own isolated identity, keeps each one alive as a real persistent session, and writes a structured handoff note every time work moves from one agent to the next — so one agent can diagnose a problem and hand it to another to implement, cleanly, on purpose.
+
+## Highlights
+
+- 🔀 **Switch between AI agents freely** — Codex and Claude Code, four profiles out of the box (`codex-personal`, `codex-work`, `claude-personal`, `claude-work`), each with its own isolated credentials. No logout/login dance to change accounts.
+- 🟢 **Live sessions that survive disconnects** — every profile runs in its own `tmux` session. Detach, close the terminal, SSH in from somewhere else, reattach exactly where you left off.
+- 🔁 **Real handoffs between agents, not just a task switch** — `agent switch` writes a timestamped record (git root, HEAD commit, working-tree diff, your note) *before* attaching the next agent, so it can pick up a task another agent started, sequentially, with full context — Codex investigates, Claude implements; Claude drafts, Codex reviews; whatever order you need.
+- 🧭 **One menu for everything** — `agent` opens a numbered picker showing which profiles are signed in, their last-known cost/model, and a reminder of the approval mode in effect — no subcommands to memorize.
+- 💸 **On-demand cost/usage visibility** — a manual, opt-in probe reports real cost and model per profile, cached until you refresh it again. Never runs, and never spends money, on its own.
 
 ## The problem
 
@@ -73,6 +83,42 @@ agent status
 
 Only run one agent against a given working tree at a time — the tool doesn't lock or serialize file access for you.
 
+## How a handoff works
+
+The core workflow this tool exists for: one agent investigates, a different agent (possibly a different provider, possibly a different account) implements — without you manually re-explaining what happened.
+
+```bash
+# 1. Codex digs into a bug on your personal account
+agent start codex-personal --task fix-flaky-test --dir ~/projects/api
+
+# 2. Once it's found the cause, hand off to your work Claude account to fix it
+agent switch claude-work --task fix-flaky-test \
+  --note 'Root cause: race in the retry loop, see connection_pool.py:88. Fix + add a regression test.'
+```
+
+`switch` writes a Markdown file under the handoff directory before it attaches Claude:
+
+```markdown
+# Agent handoff: fix-flaky-test
+
+- Created: 2026-08-18T21:04:12-07:00
+- From profile: codex-personal
+- Working directory: `/home/you/projects/api`
+- Git root: `/home/you/projects/api`
+- Git HEAD: `a1b2c3d`
+
+## Working-tree status
+ M connection_pool.py
+
+## Operator note
+Root cause: race in the retry loop, see connection_pool.py:88. Fix + add a regression test.
+
+## Required resume context
+Read this project's shared instructions file (e.g. CLAUDE.md / AGENTS.md) and any team handoff notes before acting.
+```
+
+`claude-work` starts already pointed at that file, so it opens already knowing the diagnosis, the exact commit, and what's left to do — instead of starting cold. Chain as many of these as you want: Codex → Claude → Codex again, across however many accounts you've got signed in.
+
 ## Usage/cost visibility
 
 ```bash
@@ -92,7 +138,7 @@ This means an active `agent` session has your full shell-level authority — the
 
 ## Configuration
 
-Two environment variables, both optional:
+All optional:
 
 | Variable | Default | Purpose |
 |---|---|---|
