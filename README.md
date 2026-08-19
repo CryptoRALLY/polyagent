@@ -4,13 +4,15 @@
 
 `polyagent` is a single-file terminal launcher for people juggling multiple AI coding-agent CLIs and multiple subscriptions (personal + work). It gives every agent×account combo its own isolated identity, keeps each one alive as a real persistent session, and writes a structured handoff note every time work moves from one agent to the next — so one agent can diagnose a problem and hand it to another to implement, cleanly, on purpose.
 
+![polyagent menu](docs/screenshot.png)
+
 ## Highlights
 
 - 🔀 **Switch between AI agents freely** — Codex and Claude Code, four profiles out of the box (`codex-1`, `codex-2`, `claude-1`, `claude-2`), each with its own isolated credentials. No logout/login dance to change accounts.
 - 🟢 **Live sessions that survive disconnects** — every profile runs in its own `tmux` session. Detach, close the terminal, SSH in from somewhere else, reattach exactly where you left off.
-- 🔁 **Real handoffs between agents, not just a task switch** — `agent switch` writes a timestamped record (git root, HEAD commit, working-tree diff, your note) *before* attaching the next agent, so it can pick up a task another agent started, sequentially, with full context — Codex investigates, Claude implements; Claude drafts, Codex reviews; whatever order you need.
+- 🔁 **Automatic handoffs, with git state captured for you** — `agent switch` automatically writes a timestamped record — git root, HEAD commit, working-tree diff, your note — before attaching the next agent, so it can pick up a task another agent started, sequentially, with full context — Codex investigates, Claude implements; Claude drafts, Codex reviews; whatever order you need.
 - 🧭 **One menu for everything** — `agent` opens a numbered picker showing which profiles are signed in, their last-known cost/model, and a reminder of the approval mode in effect — no subcommands to memorize.
-- 💸 **On-demand cost/usage visibility** — a manual, opt-in probe reports real cost and model per profile, cached until you refresh it again. Never runs, and never spends money, on its own.
+- 💸 **Usage tracking, on your terms** — `agent usage` tracks real cost and model per signed-in profile and caches the result so the menu always shows last-known usage at a glance. It's a manual, opt-in probe — never runs, and never spends money, automatically.
 
 ## The problem
 
