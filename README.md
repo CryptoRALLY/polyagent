@@ -164,6 +164,10 @@ All optional:
 - `bash`, `tmux`, `python3` (used only to parse the small JSON usage responses)
 - [Codex CLI](https://github.com/openai/codex) and/or [Claude Code](https://github.com/anthropics/claude-code), whichever profiles you actually use
 
+## Roadmap
+
+- **Task-fit agent recommendation.** A short survey of the task at hand (math/logic-heavy, large refactor, greenfield codegen, exploratory research, etc.) that recommends which signed-in profile/model is the better fit before you commit to one — e.g. steering toward the model that tends to do best at math over one that's stronger at broad refactors — instead of always defaulting to whichever profile is top of mind.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
