@@ -2,7 +2,7 @@
 
 **Run Codex and Claude Code side by side, across as many accounts as you have, and hand work between them without losing context.**
 
-`polyagent` is a single-file terminal launcher for people juggling multiple AI coding-agent CLIs and multiple subscriptions (personal + work). It gives every agent×account combo its own isolated identity, keeps each one alive as a real persistent session, and writes a structured handoff note every time work moves from one agent to the next — so one agent can diagnose a problem and hand it to another to implement, cleanly, on purpose.
+`polyagent` is a single-file terminal launcher for people running multiple AI coding-agent CLIs and multiple accounts side by side — to cross-review each other's work, split up a task, or just switch without re-explaining context every time. It gives every agent×account combo its own isolated identity, keeps each one alive as a real persistent session, and writes a structured handoff note every time work moves from one agent to the next — so one agent can diagnose a problem and hand it to another to implement, cleanly, on purpose.
 
 ![polyagent menu](docs/screenshot.png)
 
@@ -16,7 +16,7 @@
 
 ## The problem
 
-If you use both Codex and Claude Code, and you have separate personal and work subscriptions/workspaces for either or both, you end up with:
+If you use both Codex and Claude Code, and you have more than one account/subscription for either or both, you end up with:
 
 - **Credential collisions.** Both CLIs default to one config/auth directory (`~/.codex`, `~/.claude`). Logging into a second account usually means logging out of the first, or fighting with shell profiles and env vars every time you switch.
 - **Lost context on handoff.** You start diagnosing something with Codex, decide Claude should implement the fix (or vice versa), and there's no clean record of what the first agent found, what the working tree looked like, or what the second agent still needs to check.
