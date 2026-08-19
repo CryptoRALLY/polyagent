@@ -169,6 +169,7 @@ All optional:
 ## Roadmap
 
 - **Task-fit agent recommendation.** A short survey of the task at hand (math/logic-heavy, large refactor, greenfield codegen, exploratory research, etc.) that recommends which signed-in profile/model is the better fit before you commit to one — e.g. steering toward the model that tends to do best at math over one that's stronger at broad refactors — instead of always defaulting to whichever profile is top of mind.
+- **A GUI**, along the lines of the ChatGPT/Claude desktop apps, as an alternative front end to the terminal menu.
 
 ## License
 
