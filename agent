@@ -7,7 +7,11 @@ STATE_HOME="$APP_HOME/state"
 PROFILE_HOME="$APP_HOME/profiles"
 HANDOFF_HOME="${AGENT_SWITCHBOARD_HANDOFF_HOME:-$APP_HOME/handoffs}"
 
-profiles=(codex-personal codex-work claude-personal claude-work)
+if [[ -n "${AGENT_SWITCHBOARD_PROFILES:-}" ]]; then
+  read -r -a profiles <<<"$AGENT_SWITCHBOARD_PROFILES"
+else
+  profiles=(codex-1 codex-2 claude-1 claude-2)
+fi
 
 if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
   C_RESET=$'\033[0m'; C_BOLD=$'\033[1m'; C_DIM=$'\033[2m'
@@ -35,7 +39,7 @@ Usage: agent <command> [options]
 
 Commands:
   init                         Create private state and profile directories.
-  profiles                     Show the four available profiles and login state.
+  profiles                     Show the available profiles and login state.
   login <profile>              Sign in once for that isolated profile/workspace.
   start <profile> [--dir DIR] [--task NAME] [--prompt TEXT]
                                Start or reattach to that profile in tmux.
@@ -48,7 +52,10 @@ Commands:
                                all signed-in profiles (makes one small real,
                                billed call per profile).
 
-Profiles: codex-personal, codex-work, claude-personal, claude-work
+Profiles (default): codex-1, codex-2, claude-1, claude-2
+Override or add more with AGENT_SWITCHBOARD_PROFILES, e.g.:
+  export AGENT_SWITCHBOARD_PROFILES="codex-1 codex-2 codex-3 claude-1 claude-2"
+Any name starting with codex- or claude- works.
 
 Run `agent init`, then sign in once to each profile with `agent login <profile>`.
 EOF
@@ -209,7 +216,7 @@ probe_usage_claude() {
 
 refresh_usage_all() {
   ensure_init
-  printf 'Refreshing usage for all 4 profiles.\n'
+  printf 'Refreshing usage for all %d profiles.\n' "${#profiles[@]}"
   printf 'This makes one small real, billed call per signed-in profile (observed range: ~$0.0006-$0.09 for Claude; token-only for Codex, no direct cost exposed).\n\n'
   local profile provider
   for profile in "${profiles[@]}"; do
@@ -258,7 +265,7 @@ handoff() {
     [[ -n "$git_head" ]] && printf -- '- Git HEAD: `%s`\n' "$git_head"
     printf '\n## Working-tree status\n\n```text\n%s\n```\n' "${git_status:-clean or not a Git worktree}"
     printf '\n## Operator note\n\n%s\n' "${note:-No additional note supplied. The receiving agent must inspect the repository and shared context before acting.}"
-    printf '\n## Required resume context\n\n%s\n' "${AGENT_SWITCHBOARD_RESUME_NOTE:-Read this project'\''s shared instructions file (e.g. CLAUDE.md / AGENTS.md) and any team handoff notes before acting.}"
+    printf '\n## Required resume context\n\n%s\n' "${AGENT_SWITCHBOARD_RESUME_NOTE:-Read the shared instructions file for this project (e.g. CLAUDE.md / AGENTS.md) and any team handoff notes before acting.}"
   } >"$file"
   chmod 600 "$file"
   printf '%s\n' "$file"
@@ -335,7 +342,10 @@ choose_profile() {
   printf '  %sq%s) Back\n' "$C_CYAN_B" "$C_RESET"
   read -r -p 'Choose: ' choice
   [[ "$choice" == q || "$choice" == Q ]] && return 1
-  [[ "$choice" =~ ^[1-4]$ ]] || { printf 'Please choose 1-4 or q.\n' >&2; return 1; }
+  [[ "$choice" =~ ^[0-9]+$ ]] && ((choice >= 1 && choice <= ${#profiles[@]})) || {
+    printf 'Please choose 1-%d or q.\n' "${#profiles[@]}" >&2
+    return 1
+  }
   REPLY="${profiles[$((choice - 1))]}"
 }
 

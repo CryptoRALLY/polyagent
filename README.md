@@ -6,7 +6,7 @@
 
 ## Highlights
 
-- 🔀 **Switch between AI agents freely** — Codex and Claude Code, four profiles out of the box (`codex-personal`, `codex-work`, `claude-personal`, `claude-work`), each with its own isolated credentials. No logout/login dance to change accounts.
+- 🔀 **Switch between AI agents freely** — Codex and Claude Code, four profiles out of the box (`codex-1`, `codex-2`, `claude-1`, `claude-2`), each with its own isolated credentials. No logout/login dance to change accounts.
 - 🟢 **Live sessions that survive disconnects** — every profile runs in its own `tmux` session. Detach, close the terminal, SSH in from somewhere else, reattach exactly where you left off.
 - 🔁 **Real handoffs between agents, not just a task switch** — `agent switch` writes a timestamped record (git root, HEAD commit, working-tree diff, your note) *before* attaching the next agent, so it can pick up a task another agent started, sequentially, with full context — Codex investigates, Claude implements; Claude drafts, Codex reviews; whatever order you need.
 - 🧭 **One menu for everything** — `agent` opens a numbered picker showing which profiles are signed in, their last-known cost/model, and a reminder of the approval mode in effect — no subcommands to memorize.
@@ -25,9 +25,9 @@ None of this is hard individually. It's just enough friction that people either 
 
 ## What it solves
 
-`agent` is a single Bash script that gives each profile — `codex-personal`, `codex-work`, `claude-personal`, `claude-work` — its own fully isolated credential directory, then wraps starting, switching, and tracking those sessions in one interactive menu.
+`agent` is a single Bash script that gives each profile — `codex-1`, `codex-2`, `claude-1`, `claude-2` — its own fully isolated credential directory, then wraps starting, switching, and tracking those sessions in one interactive menu.
 
-- **Isolated auth per profile.** Each profile gets its own `CODEX_HOME` / `CLAUDE_CONFIG_DIR`, mode `0700`. Logging into `codex-work` never touches `codex-personal`'s session. No credentials are ever written to the script's own directory.
+- **Isolated auth per profile.** Each profile gets its own `CODEX_HOME` / `CLAUDE_CONFIG_DIR`, mode `0700`. Logging into `codex-2` never touches `codex-1`'s session. No credentials are ever written to the script's own directory.
 - **Persistent sessions via tmux.** `agent start <profile>` opens (or reattaches) a dedicated tmux session per `(profile, task)`. Detach with `Ctrl-b d`, come back later, even over SSH from a different machine.
 - **Recorded handoffs.** `agent switch <profile> --note '...'` writes a private Markdown record — git root, HEAD commit, working-tree status, your note — before attaching the destination profile. The receiving agent is pointed at that file, so context survives the switch instead of getting lost.
 - **One interactive menu, `agent`.** Start/continue work, hand off to another account, set the active task/directory, sign in, or check status — without needing to remember subcommands.
@@ -45,15 +45,27 @@ agent init
 Sign in once per isolated profile. In each provider's login flow, pick the account/workspace you want that profile permanently bound to:
 
 ```bash
-agent login codex-personal
-agent login codex-work
-agent login claude-personal
-agent login claude-work
+agent login codex-1
+agent login codex-2
+agent login claude-1
+agent login claude-2
 ```
 
 Codex login uses device authentication (`codex login --device-auth`) rather than a browser localhost callback, so it also works cleanly when the terminal session is on a remote/headless machine and the browser is on your local computer.
 
 You don't need all four profiles — only sign in to the ones you actually use. `agent status` shows which are ready.
+
+### Adding more accounts
+
+The default four (`codex-1`, `codex-2`, `claude-1`, `claude-2`) are just a starting point. Any name that starts with `codex-` or `claude-` works — set `AGENT_SWITCHBOARD_PROFILES` (space-separated) to add a third Codex account, drop Claude entirely, or rename profiles to whatever makes sense to you:
+
+```bash
+export AGENT_SWITCHBOARD_PROFILES="codex-1 codex-2 codex-3 claude-1 claude-2"
+agent init                        # creates the new profile directory
+agent login codex-3                # sign in to it
+```
+
+Put the `export` line in your shell rc file so it applies every time you run `agent`.
 
 ## Daily use
 
@@ -76,8 +88,8 @@ q) Quit
 The same actions are available as subcommands, for scripting or SSH one-liners:
 
 ```bash
-agent start codex-personal --task refactor-api --dir ~/projects/api
-agent switch claude-work --task refactor-api --note 'Codex diagnosed the root cause; implement and test the fix.'
+agent start codex-1 --task refactor-api --dir ~/projects/api
+agent switch claude-2 --task refactor-api --note 'Codex diagnosed the root cause; implement and test the fix.'
 agent status
 ```
 
@@ -88,11 +100,11 @@ Only run one agent against a given working tree at a time — the tool doesn't l
 The core workflow this tool exists for: one agent investigates, a different agent (possibly a different provider, possibly a different account) implements — without you manually re-explaining what happened.
 
 ```bash
-# 1. Codex digs into a bug on your personal account
-agent start codex-personal --task fix-flaky-test --dir ~/projects/api
+# 1. Codex digs into a bug
+agent start codex-1 --task fix-flaky-test --dir ~/projects/api
 
-# 2. Once it's found the cause, hand off to your work Claude account to fix it
-agent switch claude-work --task fix-flaky-test \
+# 2. Once it's found the cause, hand off to Claude to fix it
+agent switch claude-2 --task fix-flaky-test \
   --note 'Root cause: race in the retry loop, see connection_pool.py:88. Fix + add a regression test.'
 ```
 
@@ -102,7 +114,7 @@ agent switch claude-work --task fix-flaky-test \
 # Agent handoff: fix-flaky-test
 
 - Created: 2026-08-18T21:04:12-07:00
-- From profile: codex-personal
+- From profile: codex-1
 - Working directory: `/home/you/projects/api`
 - Git root: `/home/you/projects/api`
 - Git HEAD: `a1b2c3d`
@@ -114,10 +126,10 @@ agent switch claude-work --task fix-flaky-test \
 Root cause: race in the retry loop, see connection_pool.py:88. Fix + add a regression test.
 
 ## Required resume context
-Read this project's shared instructions file (e.g. CLAUDE.md / AGENTS.md) and any team handoff notes before acting.
+Read the shared instructions file for this project (e.g. CLAUDE.md / AGENTS.md) and any team handoff notes before acting.
 ```
 
-`claude-work` starts already pointed at that file, so it opens already knowing the diagnosis, the exact commit, and what's left to do — instead of starting cold. Chain as many of these as you want: Codex → Claude → Codex again, across however many accounts you've got signed in.
+`claude-2` starts already pointed at that file, so it opens already knowing the diagnosis, the exact commit, and what's left to do — instead of starting cold. Chain as many of these as you want: Codex → Claude → Codex again, across however many accounts you've got signed in.
 
 ## Usage/cost visibility
 
@@ -143,6 +155,7 @@ All optional:
 | Variable | Default | Purpose |
 |---|---|---|
 | `AGENT_SWITCHBOARD_HOME` | `~/.local/share/agent-switchboard` | Where profile credentials, session state, and cached usage data live. |
+| `AGENT_SWITCHBOARD_PROFILES` | `codex-1 codex-2 claude-1 claude-2` | Space-separated list of profile names. Any name starting with `codex-` or `claude-` works — see [Adding more accounts](#adding-more-accounts). |
 | `AGENT_SWITCHBOARD_HANDOFF_HOME` | `$AGENT_SWITCHBOARD_HOME/handoffs` | Where handoff Markdown records are written. Point this at a shared/synced directory if multiple machines or agents should see the same handoff trail. |
 | `AGENT_SWITCHBOARD_RESUME_NOTE` | a generic reminder to read your project's shared instructions file | Free-text note appended to every handoff record, e.g. project-specific rules of engagement. |
 
