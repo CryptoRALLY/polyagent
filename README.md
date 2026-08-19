@@ -8,11 +8,11 @@
 
 ## Highlights
 
-- 🔀 **Switch between AI agents freely** — Codex and Claude Code, four profiles out of the box (`codex-1`, `codex-2`, `claude-1`, `claude-2`), each with its own isolated credentials. No logout/login dance to change accounts.
-- 🟢 **Live sessions that survive disconnects** — every profile runs in its own `tmux` session. Detach, close the terminal, SSH in from somewhere else, reattach exactly where you left off.
-- 🔁 **Automatic handoffs, with git state captured for you** — `agent switch` automatically writes a timestamped record — git root, HEAD commit, working-tree diff, your note — before attaching the next agent, so it can pick up a task another agent started, sequentially, with full context — Codex investigates, Claude implements; Claude drafts, Codex reviews; whatever order you need.
-- 🧭 **One menu for everything** — `agent` opens a numbered picker showing which profiles are signed in, their last-known cost/model, and a reminder of the approval mode in effect — no subcommands to memorize.
-- 💸 **Usage tracking, on your terms** — `agent usage` tracks real cost and model per signed-in profile and caches the result so the menu always shows last-known usage at a glance. It's a manual, opt-in probe — never runs, and never spends money, automatically.
+- **Switch between AI agents freely** — Codex and Claude Code, four profiles out of the box (`codex-1`, `codex-2`, `claude-1`, `claude-2`), each with its own isolated credentials. No logout/login dance to change accounts.
+- **Live sessions that survive disconnects** — every profile runs in its own `tmux` session. Detach, close the terminal, SSH in from somewhere else, reattach exactly where you left off.
+- **Automatic handoffs, with git state captured for you** — `agent switch` automatically writes a timestamped record — git root, HEAD commit, working-tree diff, your note — before attaching the next agent, so it can pick up a task another agent started, sequentially, with full context — Codex investigates, Claude implements; Claude drafts, Codex reviews; whatever order you need.
+- **One menu for everything** — `agent` opens a numbered picker showing which profiles are signed in, their last-known cost/model, and a reminder of the approval mode in effect — no subcommands to memorize.
+- **Usage tracking, on your terms** — `agent usage` tracks real cost and model per signed-in profile and caches the result so the menu always shows last-known usage at a glance. It's a manual, opt-in probe — never runs, and never spends money, automatically.
 
 ## The problem
 
