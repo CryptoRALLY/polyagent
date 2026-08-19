@@ -163,6 +163,7 @@ All optional:
 
 ## Requirements
 
+- Linux. Developed and tested on Ubuntu 24.04 LTS; other distros likely work but aren't tested. macOS/Windows aren't supported.
 - `bash`, `tmux`, `python3` (used only to parse the small JSON usage responses)
 - [Codex CLI](https://github.com/openai/codex) and/or [Claude Code](https://github.com/anthropics/claude-code), whichever profiles you actually use
 
