@@ -24,10 +24,23 @@ else
   G_ON='*'; G_OFF='o'; G_DIAMOND='*'
 fi
 
+splash() {
+  local pad='           '
+  printf '%s%s   ______   %s\n'  "$pad" "$C_CYAN" "$C_RESET"
+  printf '%s%s  /      \\  %s\n' "$pad" "$C_CYAN" "$C_RESET"
+  printf '%s%s /  %s%s%s  %s%s%s  \\ %s\n' \
+    "$pad" "$C_CYAN" "$C_MAGENTA_B" "$G_DIAMOND" "$C_CYAN" "$C_MAGENTA_B" "$G_DIAMOND" "$C_CYAN" "$C_RESET"
+  printf '%s%s \\  %s%s%s  %s%s%s  / %s\n' \
+    "$pad" "$C_CYAN" "$C_MAGENTA_B" "$G_DIAMOND" "$C_CYAN" "$C_MAGENTA_B" "$G_DIAMOND" "$C_CYAN" "$C_RESET"
+  printf '%s%s  \\______/  %s\n' "$pad" "$C_CYAN" "$C_RESET"
+}
+
 banner() {
   printf '%s╔═══════════════════════════════════╗%s\n' "$C_CYAN" "$C_RESET"
-  printf '%s║%s  %s%s AGENT SWITCHBOARD %s%s              %s║%s\n' \
+  printf '%s║%s      %s%s  P O L Y A G E N T  %s%s      %s║%s\n' \
     "$C_CYAN" "$C_RESET" "$C_MAGENTA_B" "$G_DIAMOND" "$G_DIAMOND" "$C_RESET" "$C_CYAN" "$C_RESET"
+  printf '%s║%s      %scodex · claude · handoff%s     %s║%s\n' \
+    "$C_CYAN" "$C_RESET" "$C_DIM" "$C_RESET" "$C_CYAN" "$C_RESET"
   printf '%s╚═══════════════════════════════════╝%s\n' "$C_CYAN" "$C_RESET"
 }
 
@@ -352,10 +365,15 @@ choose_profile() {
 
 interactive() {
   [[ -f "$STATE_HOME/active.env" ]] || init
-  local action new_task new_dir note target
+  local action new_task new_dir note target first_pass=1
   while true; do
     load_active
     clear 2>/dev/null || true
+    if ((first_pass)); then
+      splash
+      echo
+      first_pass=0
+    fi
     banner
     printf '%sTask:%s      %s\n%sProfile:%s   %s\n%sDirectory:%s %s\n\n' \
       "$C_DIM" "$C_RESET" "${task:-not set}" "$C_DIM" "$C_RESET" "${profile:-not set}" "$C_DIM" "$C_RESET" "$dir"
